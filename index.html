@@ -1,35 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ramadan pen</title>
+  <title>Ramadan Pen - Double Pinch Detect</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <style>
-    body { margin: 0; background: #050301; overflow: hidden; }
+    body { margin: 0; background: #050301; overflow: hidden; font-family: sans-serif; }
     video { display: none; }
-    canvas { width: 100%; height: 100%; transform: scaleX(-1); position: absolute; z-index: 1; }
+    canvas { width: 100%; height: 100%; position: absolute; z-index: 1; }
+    
+    #ui-layer {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    }
+
+    .status-bar {
+      background: rgba(245, 208, 97, 0.2);
+      color: #F5D061; padding: 10px 20px; border-radius: 30px;
+      font-weight: bold; border: 1px solid #F5D061;
+      backdrop-filter: blur(5px);
+    }
+
+    #clear-btn {
+      background: #ff4444; color: white; border: none; padding: 8px 15px;
+      border-radius: 15px; cursor: pointer; font-size: 12px;
+    }
   </style>
 </head>
 <body>
-  var vid = document.getElementById('vid');
+
+  <div id="ui-layer">
+    <div id="modeStatus" class="status-bar">MODE: IDLE (Double Pinch to Start)</div>
+    <button id="clear-btn" onclick="clearCanvas()">CLEAR (Space)</button>
+  </div>
+
+  <video id="vid"></video>
+  <canvas id="c"></canvas>
+
+  <script>
+    var vid = document.getElementById('vid');
     var c = document.getElementById('c');
     var ctx = c.getContext('2d');
+    var modeStatus = document.getElementById('modeStatus');
+    
     var arr = [];
     var cur = [];
-    var draw = false;
-    var sx = null;
-    var sy = null;
+    var drawMode = false; // Yeh auto-detect switch hai
+    var isDrawingNow = false;
+    var sx = null, sy = null;
 
-    // Space dabane se screen saaf ho jayegi
-    window.onkeydown = function(e) {
-      if (e.code == 'Space') {
-          arr = [];
-          cur = [];
-      }
-    }
+    // Double Click (Pinch) Variables
+    var lastPinchTime = 0;
+    var wasPinching = false;
 
-    // Do points ke darmiyan distance nikalne ka function
+    function clearCanvas() { arr = []; cur = []; }
+
     function getDistance(p1, p2) {
       return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
@@ -38,18 +64,16 @@
       c.width = window.innerWidth;
       c.height = window.innerHeight;
       
-      // Video drawing
+      // Mirror View
       ctx.save();
       ctx.translate(c.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(res.image, 0, 0, c.width, c.height);
       ctx.restore();
 
-      // Dark overlay
       ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
       ctx.fillRect(0, 0, c.width, c.height);
 
-      // Line style
       ctx.shadowColor = '#F5D061';
       ctx.shadowBlur = 15;
       ctx.strokeStyle = '#F5D061';
@@ -69,46 +93,52 @@
 
       if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
         var lm = res.multiHandLandmarks[0];
-        
-        // Index finger (8) aur Thumb (4) points
         var thumb = lm[4];
         var index = lm[8];
 
-        // Distance check (0.05 ek acha threshold hai)
-        var distance = getDistance(thumb, index);
-        var isPinching = distance < 0.05; 
-
-        var rx = index.x * c.width;
+        var rx = (1 - index.x) * c.width; 
         var ry = index.y * c.height;
 
-        // Smoothing (Jitters kam karne ke liye)
-        if (sx == null) {
-          sx = rx; sy = ry;
-        } else {
-          sx += (rx - sx) * 0.45;
-          sy += (ry - sy) * 0.45;
-        }
+        if (sx == null) { sx = rx; sy = ry; }
+        else { sx += (rx - sx) * 0.45; sy += (ry - sy) * 0.45; }
 
-        // Pointer dikhana
+        // PINCH DETECTION
+        var dist = getDistance(thumb, index);
+        var isPinching = dist < 0.05;
+
+        // --- Double Pinch Logic ---
+        if (isPinching && !wasPinching) {
+          var currentTime = new Date().getTime();
+          if ((currentTime - lastPinchTime) < 350) { // 350ms ke andar double click
+            drawMode = !drawMode; // Mode Toggle karein
+            modeStatus.innerText = drawMode ? "MODE: WRITING (Double Pinch to Stop)" : "MODE: IDLE (Double Pinch to Start)";
+            modeStatus.style.background = drawMode ? "rgba(68, 255, 68, 0.2)" : "rgba(245, 208, 97, 0.2)";
+            lastPinchTime = 0; // Reset
+          } else {
+            lastPinchTime = currentTime;
+          }
+        }
+        wasPinching = isPinching;
+
+        // Pointer Visual
         ctx.beginPath();
         ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
-        ctx.fillStyle = isPinching ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
+        ctx.fillStyle = drawMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
         ctx.fill();
 
-        // Drawing logic
-        if (isPinching) {
-          if (!draw) {
-            draw = true;
+        // WRITING LOGIC
+        if (drawMode) {
+          if (!isDrawingNow) {
+            isDrawingNow = true;
             cur = [];
             arr.push(cur);
           }
           cur.push({x: sx, y: sy});
         } else {
-          draw = false;
+          isDrawingNow = false;
         }
       } else {
-        draw = false;
-        sx = null;
+        isDrawingNow = false; sx = null;
       }
     }
 
@@ -116,21 +146,16 @@
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
     
-    h.setOptions({ 
-      maxNumHands: 1, 
-      modelComplexity: 1, 
-      minDetectionConfidence: 0.7, 
-      minTrackingConfidence: 0.7 
-    });
-    
+    h.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     h.onResults(run);
 
     var cam = new Camera(vid, {
       onFrame: async () => { await h.send({image: vid}); },
       width: 1280, height: 720
     });
-    
     cam.start();
+
+    window.onkeydown = function(e) { if (e.code == 'Space') clearCanvas(); }
   </script>
 </body>
 </html>
