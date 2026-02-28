@@ -1,38 +1,63 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ramadan Pen - Double Pinch Detect</title>
+  <title>Ramadan Pen - Dual Control</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <style>
-    body { margin: 0; background: #050301; overflow: hidden; font-family: sans-serif; }
+    body { margin: 0; background: #050301; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     video { display: none; }
-    canvas { width: 100%; height: 100%; position: absolute; z-index: 1; }
+    canvas { width: 100%; height: 100%; position: absolute; z-index: 1; transform: scaleX(-1); }
     
+    /* UI Layer for Button */
     #ui-layer {
-      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-      z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 10px;
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
     }
 
-    .status-bar {
-      background: rgba(245, 208, 97, 0.2);
-      color: #F5D061; padding: 10px 20px; border-radius: 30px;
-      font-weight: bold; border: 1px solid #F5D061;
+    #toggleBtn {
+      background: rgba(40, 40, 40, 0.8);
+      color: #F5D061;
+      border: 2px solid #F5D061;
+      padding: 12px 30px;
+      border-radius: 30px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
       backdrop-filter: blur(5px);
+      transition: 0.3s;
     }
 
-    #clear-btn {
-      background: #ff4444; color: white; border: none; padding: 8px 15px;
-      border-radius: 15px; cursor: pointer; font-size: 12px;
+    #toggleBtn.active {
+      background: #F5D061;
+      color: #050301;
+      box-shadow: 0 0 15px #F5D061;
+    }
+
+    #clearBtn {
+      background: #ff4444;
+      color: white;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
 
   <div id="ui-layer">
-    <div id="modeStatus" class="status-bar">MODE: IDLE (Double Pinch to Start)</div>
-    <button id="clear-btn" onclick="clearCanvas()">CLEAR (Space)</button>
+    <button id="toggleBtn" onclick="toggleMode()">DRAW MODE: OFF</button>
+    <button id="clearBtn" onclick="clearCanvas()">CLEAR CANVAS (Space)</button>
   </div>
 
   <video id="vid"></video>
@@ -42,19 +67,36 @@
     var vid = document.getElementById('vid');
     var c = document.getElementById('c');
     var ctx = c.getContext('2d');
-    var modeStatus = document.getElementById('modeStatus');
+    var toggleBtn = document.getElementById('toggleBtn');
     
     var arr = [];
     var cur = [];
-    var drawMode = false; // Yeh auto-detect switch hai
+    var isDrawingMode = false; // Main switch state
     var isDrawingNow = false;
     var sx = null, sy = null;
 
-    // Double Click (Pinch) Variables
+    // Double Pinch Variables
     var lastPinchTime = 0;
     var wasPinching = false;
 
-    function clearCanvas() { arr = []; cur = []; }
+    // Clear function
+    function clearCanvas() {
+      arr = [];
+      cur = [];
+    }
+
+    // Mode Toggle Function (Button aur Double Pinch dono yehi use karenge)
+    function toggleMode() {
+      isDrawingMode = !isDrawingMode;
+      if (isDrawingMode) {
+        toggleBtn.innerText = "DRAW MODE: ON";
+        toggleBtn.classList.add("active");
+      } else {
+        toggleBtn.innerText = "DRAW MODE: OFF";
+        toggleBtn.classList.remove("active");
+        isDrawingNow = false; // Mode off hote hi drawing rok do
+      }
+    }
 
     function getDistance(p1, p2) {
       return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
@@ -64,16 +106,12 @@
       c.width = window.innerWidth;
       c.height = window.innerHeight;
       
-      // Mirror View
-      ctx.save();
-      ctx.translate(c.width, 0);
-      ctx.scale(-1, 1);
+      // Video aur Background
       ctx.drawImage(res.image, 0, 0, c.width, c.height);
-      ctx.restore();
-
       ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
       ctx.fillRect(0, 0, c.width, c.height);
 
+      // Pen Style
       ctx.shadowColor = '#F5D061';
       ctx.shadowBlur = 15;
       ctx.strokeStyle = '#F5D061';
@@ -81,7 +119,7 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Puraani lines draw karna
+      // Purani lines draw karein
       for (var i = 0; i < arr.length; i++) {
         ctx.beginPath();
         for (var j = 0; j < arr[i].length; j++) {
@@ -96,7 +134,7 @@
         var thumb = lm[4];
         var index = lm[8];
 
-        var rx = (1 - index.x) * c.width; 
+        var rx = index.x * c.width;
         var ry = index.y * c.height;
 
         if (sx == null) { sx = rx; sy = ry; }
@@ -106,13 +144,11 @@
         var dist = getDistance(thumb, index);
         var isPinching = dist < 0.05;
 
-        // --- Double Pinch Logic ---
+        // --- DOUBLE PINCH LOGIC ---
         if (isPinching && !wasPinching) {
-          var currentTime = new Date().getTime();
-          if ((currentTime - lastPinchTime) < 350) { // 350ms ke andar double click
-            drawMode = !drawMode; // Mode Toggle karein
-            modeStatus.innerText = drawMode ? "MODE: WRITING (Double Pinch to Stop)" : "MODE: IDLE (Double Pinch to Start)";
-            modeStatus.style.background = drawMode ? "rgba(68, 255, 68, 0.2)" : "rgba(245, 208, 97, 0.2)";
+          var currentTime = Date.now();
+          if (currentTime - lastPinchTime < 400) { // 400ms ke andar do dafa pinch
+            toggleMode(); // Mode change kar do
             lastPinchTime = 0; // Reset
           } else {
             lastPinchTime = currentTime;
@@ -120,25 +156,25 @@
         }
         wasPinching = isPinching;
 
-        // Pointer Visual
+        // Pointer UI (Agar Mode ON hai to white, warna dull yellow)
         ctx.beginPath();
         ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
-        ctx.fillStyle = drawMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
+        ctx.fillStyle = isDrawingMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
         ctx.fill();
 
-        // WRITING LOGIC
-        if (drawMode) {
+        // WRITING LOGIC (Agar Mode ON hai to likhna shuru karo)
+        if (isDrawingMode) {
           if (!isDrawingNow) {
             isDrawingNow = true;
             cur = [];
             arr.push(cur);
           }
           cur.push({x: sx, y: sy});
-        } else {
-          isDrawingNow = false;
         }
+
       } else {
-        isDrawingNow = false; sx = null;
+        isDrawingNow = false; 
+        sx = null;
       }
     }
 
@@ -146,7 +182,13 @@
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
     
-    h.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+    h.setOptions({ 
+      maxNumHands: 1, 
+      modelComplexity: 1, 
+      minDetectionConfidence: 0.7, 
+      minTrackingConfidence: 0.7 
+    });
+    
     h.onResults(run);
 
     var cam = new Camera(vid, {
@@ -155,7 +197,10 @@
     });
     cam.start();
 
-    window.onkeydown = function(e) { if (e.code == 'Space') clearCanvas(); }
+    // Spacebar se bhi clear ho jayega
+    window.onkeydown = function(e) {
+      if (e.code == 'Space') clearCanvas();
+    }
   </script>
 </body>
 </html>
