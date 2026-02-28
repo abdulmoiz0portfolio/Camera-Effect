@@ -12,35 +12,44 @@
   </style>
 </head>
 <body>
-  <video id="vid"></video>
-  <canvas id="c"></canvas>
-  <script>
-    var vid = document.getElementById('vid');
+  var vid = document.getElementById('vid');
     var c = document.getElementById('c');
     var ctx = c.getContext('2d');
     var arr = [];
     var cur = [];
-    var shift = false;
     var draw = false;
     var sx = null;
     var sy = null;
 
+    // Space dabane se screen saaf ho jayegi
     window.onkeydown = function(e) {
-      if (e.key == 'Shift') shift = true;
-      if (e.code == 'Space') arr = [];
+      if (e.code == 'Space') {
+          arr = [];
+          cur = [];
+      }
     }
-    
-    window.onkeyup = function(e) {
-      if (e.key == 'Shift') shift = false;
+
+    // Do points ke darmiyan distance nikalne ka function
+    function getDistance(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
 
     function run(res) {
       c.width = window.innerWidth;
       c.height = window.innerHeight;
+      
+      // Video drawing
+      ctx.save();
+      ctx.translate(c.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(res.image, 0, 0, c.width, c.height);
+      ctx.restore();
+
+      // Dark overlay
       ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
       ctx.fillRect(0, 0, c.width, c.height);
 
+      // Line style
       ctx.shadowColor = '#F5D061';
       ctx.shadowBlur = 15;
       ctx.strokeStyle = '#F5D061';
@@ -48,6 +57,7 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
+      // Puraani lines draw karna
       for (var i = 0; i < arr.length; i++) {
         ctx.beginPath();
         for (var j = 0; j < arr[i].length; j++) {
@@ -59,31 +69,34 @@
 
       if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
         var lm = res.multiHandLandmarks[0];
-        drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: 'rgba(245, 208, 97, 0.3)', lineWidth: 2});
-        drawLandmarks(ctx, lm, {color: '#FFFFFF', lineWidth: 1, radius: 2});
+        
+        // Index finger (8) aur Thumb (4) points
+        var thumb = lm[4];
+        var index = lm[8];
 
-        var ind = lm[8];
-        var rx = ind.x * c.width;
-        var ry = ind.y * c.height;
+        // Distance check (0.05 ek acha threshold hai)
+        var distance = getDistance(thumb, index);
+        var isPinching = distance < 0.05; 
 
+        var rx = index.x * c.width;
+        var ry = index.y * c.height;
+
+        // Smoothing (Jitters kam karne ke liye)
         if (sx == null) {
-          sx = rx; 
-          sy = ry;
+          sx = rx; sy = ry;
         } else {
           sx += (rx - sx) * 0.45;
           sy += (ry - sy) * 0.45;
         }
 
+        // Pointer dikhana
         ctx.beginPath();
-        ctx.arc(sx, sy, 6, 0, 2 * Math.PI);
-        if (shift) { 
-          ctx.fillStyle = '#FFFFFF'; 
-        } else { 
-          ctx.fillStyle = 'rgba(245, 208, 97, 0.4)'; 
-        }
+        ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = isPinching ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
         ctx.fill();
 
-        if (shift) {
+        // Drawing logic
+        if (isPinching) {
           if (!draw) {
             draw = true;
             cur = [];
@@ -100,24 +113,21 @@
     }
 
     var h = new Hands({
-      locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      }
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
     
     h.setOptions({ 
       maxNumHands: 1, 
       modelComplexity: 1, 
-      minDetectionConfidence: 0.5, 
-      minTrackingConfidence: 0.5 
+      minDetectionConfidence: 0.7, 
+      minTrackingConfidence: 0.7 
     });
     
     h.onResults(run);
 
     var cam = new Camera(vid, {
       onFrame: async () => { await h.send({image: vid}); },
-      width: 1280, 
-      height: 720
+      width: 1280, height: 720
     });
     
     cam.start();
