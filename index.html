@@ -1,206 +1,128 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ramadan Pen - Dual Control</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  <style>
-    body { margin: 0; background: #050301; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    video { display: none; }
-    canvas { width: 100%; height: 100%; position: absolute; z-index: 1; transform: scaleX(-1); }
-    
-    /* UI Layer for Button */
-    #ui-layer {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 15px;
-    }
-
-    #toggleBtn {
-      background: rgba(40, 40, 40, 0.8);
-      color: #F5D061;
-      border: 2px solid #F5D061;
-      padding: 12px 30px;
-      border-radius: 30px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-      backdrop-filter: blur(5px);
-      transition: 0.3s;
-    }
-
-    #toggleBtn.active {
-      background: #F5D061;
-      color: #050301;
-      box-shadow: 0 0 15px #F5D061;
-    }
-
-    #clearBtn {
-      background: #ff4444;
-      color: white;
-      border: none;
-      padding: 8px 20px;
-      border-radius: 20px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-  </style>
+  <title>ramadan pen</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    body { margin: 0; background: #050301; overflow: hidden; }
+    video { display: none; }
+    canvas { width: 100%; height: 100%; transform: scaleX(-1); position: absolute; z-index: 1; }
+  </style>
 </head>
 <body>
+  <video id="vid"></video>
+  <canvas id="c"></canvas>
+  <script>
+    var vid = document.getElementById('vid');
+    var c = document.getElementById('c');
+    var ctx = c.getContext('2d');
+    var arr = [];
+    var cur = [];
+    var shift = false;
+    var draw = false;
+    var sx = null;
+    var sy = null;
 
-  <div id="ui-layer">
-    <button id="toggleBtn" onclick="toggleMode()">DRAW MODE: OFF</button>
-    <button id="clearBtn" onclick="clearCanvas()">CLEAR CANVAS (Space)</button>
-  </div>
+    window.onkeydown = function(e) {
+      if (e.key == 'Shift') shift = true;
+      if (e.code == 'Space') arr = [];
+    }
+    
+    window.onkeyup = function(e) {
+      if (e.key == 'Shift') shift = false;
+    }
 
-  <video id="vid"></video>
-  <canvas id="c"></canvas>
+    function run(res) {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+      ctx.drawImage(res.image, 0, 0, c.width, c.height);
+      ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
+      ctx.fillRect(0, 0, c.width, c.height);
 
-  <script>
-    var vid = document.getElementById('vid');
-    var c = document.getElementById('c');
-    var ctx = c.getContext('2d');
-    var toggleBtn = document.getElementById('toggleBtn');
-    
-    var arr = [];
-    var cur = [];
-    var isDrawingMode = false; // Main switch state
-    var isDrawingNow = false;
-    var sx = null, sy = null;
+      ctx.shadowColor = '#F5D061';
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#F5D061';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-    // Double Pinch Variables
-    var lastPinchTime = 0;
-    var wasPinching = false;
+      for (var i = 0; i < arr.length; i++) {
+        ctx.beginPath();
+        for (var j = 0; j < arr[i].length; j++) {
+          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
+          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+        }
+        ctx.stroke();
+      }
 
-    // Clear function
-    function clearCanvas() {
-      arr = [];
-      cur = [];
-    }
+      if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+        var lm = res.multiHandLandmarks[0];
+        drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: 'rgba(245, 208, 97, 0.3)', lineWidth: 2});
+        drawLandmarks(ctx, lm, {color: '#FFFFFF', lineWidth: 1, radius: 2});
 
-    // Mode Toggle Function (Button aur Double Pinch dono yehi use karenge)
-    function toggleMode() {
-      isDrawingMode = !isDrawingMode;
-      if (isDrawingMode) {
-        toggleBtn.innerText = "DRAW MODE: ON";
-        toggleBtn.classList.add("active");
-      } else {
-        toggleBtn.innerText = "DRAW MODE: OFF";
-        toggleBtn.classList.remove("active");
-        isDrawingNow = false; // Mode off hote hi drawing rok do
-      }
-    }
+        var ind = lm[8];
+        var rx = ind.x * c.width;
+        var ry = ind.y * c.height;
 
-    function getDistance(p1, p2) {
-      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
+        if (sx == null) {
+          sx = rx; 
+          sy = ry;
+        } else {
+          sx += (rx - sx) * 0.45;
+          sy += (ry - sy) * 0.45;
+        }
 
-    function run(res) {
-      c.width = window.innerWidth;
-      c.height = window.innerHeight;
-      
-      // Video aur Background
-      ctx.drawImage(res.image, 0, 0, c.width, c.height);
-      ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
-      ctx.fillRect(0, 0, c.width, c.height);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 6, 0, 2 * Math.PI);
+        if (shift) { 
+          ctx.fillStyle = '#FFFFFF'; 
+        } else { 
+          ctx.fillStyle = 'rgba(245, 208, 97, 0.4)'; 
+        }
+        ctx.fill();
 
-      // Pen Style
-      ctx.shadowColor = '#F5D061';
-      ctx.shadowBlur = 15;
-      ctx.strokeStyle = '#F5D061';
-      ctx.lineWidth = 6;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+        if (shift) {
+          if (!draw) {
+            draw = true;
+            cur = [];
+            arr.push(cur);
+          }
+          cur.push({x: sx, y: sy});
+        } else {
+          draw = false;
+        }
+      } else {
+        draw = false;
+        sx = null;
+      }
+    }
 
-      // Purani lines draw karein
-      for (var i = 0; i < arr.length; i++) {
-        ctx.beginPath();
-        for (var j = 0; j < arr[i].length; j++) {
-          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
-          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
-        }
-        ctx.stroke();
-      }
+    var h = new Hands({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+      }
+    });
+    
+    h.setOptions({ 
+      maxNumHands: 1, 
+      modelComplexity: 1, 
+      minDetectionConfidence: 0.5, 
+      minTrackingConfidence: 0.5 
+    });
+    
+    h.onResults(run);
 
-      if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
-        var lm = res.multiHandLandmarks[0];
-        var thumb = lm[4];
-        var index = lm[8];
-
-        var rx = index.x * c.width;
-        var ry = index.y * c.height;
-
-        if (sx == null) { sx = rx; sy = ry; }
-        else { sx += (rx - sx) * 0.45; sy += (ry - sy) * 0.45; }
-
-        // PINCH DETECTION
-        var dist = getDistance(thumb, index);
-        var isPinching = dist < 0.05;
-
-        // --- DOUBLE PINCH LOGIC ---
-        if (isPinching && !wasPinching) {
-          var currentTime = Date.now();
-          if (currentTime - lastPinchTime < 400) { // 400ms ke andar do dafa pinch
-            toggleMode(); // Mode change kar do
-            lastPinchTime = 0; // Reset
-          } else {
-            lastPinchTime = currentTime;
-          }
-        }
-        wasPinching = isPinching;
-
-        // Pointer UI (Agar Mode ON hai to white, warna dull yellow)
-        ctx.beginPath();
-        ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
-        ctx.fillStyle = isDrawingMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
-        ctx.fill();
-
-        // WRITING LOGIC (Agar Mode ON hai to likhna shuru karo)
-        if (isDrawingMode) {
-          if (!isDrawingNow) {
-            isDrawingNow = true;
-            cur = [];
-            arr.push(cur);
-          }
-          cur.push({x: sx, y: sy});
-        }
-
-      } else {
-        isDrawingNow = false; 
-        sx = null;
-      }
-    }
-
-    var h = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
-    
-    h.setOptions({ 
-      maxNumHands: 1, 
-      modelComplexity: 1, 
-      minDetectionConfidence: 0.7, 
-      minTrackingConfidence: 0.7 
-    });
-    
-    h.onResults(run);
-
-    var cam = new Camera(vid, {
-      onFrame: async () => { await h.send({image: vid}); },
-      width: 1280, height: 720
-    });
-    cam.start();
-
-    // Spacebar se bhi clear ho jayega
-    window.onkeydown = function(e) {
-      if (e.code == 'Space') clearCanvas();
-    }
-  </script>
+    var cam = new Camera(vid, {
+      onFrame: async () => { await h.send({image: vid}); },
+      width: 1280, 
+      height: 720
+    });
+    
+    cam.start();
+  </script>
 </body>
 </html>
+
+mugha ismy aik ya option dena hai kis ma click kren shift na daba na pare
