@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ramadan Pen - Hand Dual Control</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    body { margin: 0; background: #050301; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    video { display: none; }
+    canvas { width: 100%; height: 100%; position: absolute; z-index: 1; transform: scaleX(-1); }
+    
+    #ui-layer {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    #toggleBtn {
+      background: rgba(40, 40, 40, 0.8);
+      color: #F5D061;
+      border: 2px solid #F5D061;
+      padding: 12px 30px;
+      border-radius: 30px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      backdrop-filter: blur(5px);
+      transition: 0.3s;
+    }
+
+    #toggleBtn.active {
+      background: #F5D061;
+      color: #050301;
+      box-shadow: 0 0 15px #F5D061;
+    }
+
+    #clearBtn {
+      background: #ff4444;
+      color: white;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    #nav-links {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+    }
+    #nav-links a {
+      color: #F5D061;
+      text-decoration: none;
+      background: rgba(20, 15, 10, 0.8);
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(245, 208, 97, 0.3);
+      backdrop-filter: blur(8px);
+      transition: 0.2s;
+    }
+    #nav-links a:hover, #nav-links a.active {
+      background: #F5D061;
+      color: #050301;
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.6);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui-layer">
+    <button id="toggleBtn" onclick="toggleMode()">DRAW MODE: OFF</button>
+    <button id="clearBtn" onclick="clearCanvas()">CLEAR CANVAS (Space)</button>
+  </div>
+
+  <div id="nav-links">
+    <a href="index.html">👤 Face Mode</a>
+    <a href="hand.html" class="active">🖐️ Hand Mode (Active)</a>
+    <a href="shift-original.html">⌨️ Hand Original (Shift)</a>
+  </div>
+
+  <video id="vid"></video>
+  <canvas id="c"></canvas>
+
+  <script>
+    var vid = document.getElementById('vid');
+    var c = document.getElementById('c');
+    var ctx = c.getContext('2d');
+    var toggleBtn = document.getElementById('toggleBtn');
+    
+    var arr = [];
+    var cur = [];
+    var isDrawingMode = false;
+    var isDrawingNow = false;
+    var sx = null, sy = null;
+
+    var lastPinchTime = 0;
+    var wasPinching = false;
+
+    function clearCanvas() {
+      arr = [];
+      cur = [];
+    }
+
+    function toggleMode() {
+      isDrawingMode = !isDrawingMode;
+      if (isDrawingMode) {
+        toggleBtn.innerText = "DRAW MODE: ON";
+        toggleBtn.classList.add("active");
+      } else {
+        toggleBtn.innerText = "DRAW MODE: OFF";
+        toggleBtn.classList.remove("active");
+        isDrawingNow = false;
+      }
+    }
+
+    function getDistance(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function run(res) {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+      
+      ctx.drawImage(res.image, 0, 0, c.width, c.height);
+      ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      ctx.shadowColor = '#F5D061';
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#F5D061';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      for (var i = 0; i < arr.length; i++) {
+        ctx.beginPath();
+        for (var j = 0; j < arr[i].length; j++) {
+          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
+          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+        }
+        ctx.stroke();
+      }
+
+      if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+        var lm = res.multiHandLandmarks[0];
+        var thumb = lm[4];
+        var index = lm[8];
+
+        var rx = index.x * c.width;
+        var ry = index.y * c.height;
+
+        if (sx == null) { sx = rx; sy = ry; }
+        else { sx += (rx - sx) * 0.45; sy += (ry - sy) * 0.45; }
+
+        var dist = getDistance(thumb, index);
+        var isPinching = dist < 0.05;
+
+        if (isPinching && !wasPinching) {
+          var currentTime = Date.now();
+          if (currentTime - lastPinchTime < 400) {
+            toggleMode();
+            lastPinchTime = 0;
+          } else {
+            lastPinchTime = currentTime;
+          }
+        }
+        wasPinching = isPinching;
+
+        ctx.beginPath();
+        ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = isDrawingMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
+        ctx.fill();
+
+        if (isDrawingMode) {
+          if (!isDrawingNow) {
+            isDrawingNow = true;
+            cur = [];
+            arr.push(cur);
+          }
+          cur.push({x: sx, y: sy});
+        } else {
+          isDrawingNow = false;
+        }
+      } else {
+        isDrawingNow = false;
+        sx = null;
+      }
+    }
+
+    var h = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    
+    h.setOptions({ 
+      maxNumHands: 1, 
+      modelComplexity: 1, 
+      minDetectionConfidence: 0.7, 
+      minTrackingConfidence: 0.7 
+    });
+    
+    h.onResults(run);
+
+    var cam = new Camera(vid, {
+      onFrame: async () => { await h.send({image: vid}); },
+      width: 1280, height: 720
+    });
+    
+    cam.start();
+
+    window.onkeydown = function(e) {
+      if (e.code == 'Space') clearCanvas();
+    }
+  </script>
+</body>
+</html>

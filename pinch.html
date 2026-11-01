@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ramadan Pen - Pinch Control</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    body { margin: 0; background: #050301; overflow: hidden; }
+    video { display: none; }
+    canvas { width: 100%; height: 100%; transform: scaleX(-1); position: absolute; z-index: 1; }
+    #nav-links {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 15px;
+      font-size: 13px;
+      font-family: sans-serif;
+    }
+    #nav-links a {
+      color: #F5D061;
+      text-decoration: none;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 14px;
+      border-radius: 15px;
+      border: 1px solid rgba(245, 208, 97, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="nav-links">
+    <a href="index.html">Dual Control (dec6185)</a>
+    <a href="pinch.html">Pinch Only (bb5f76e)</a>
+    <a href="shift-original.html">Shift Original (adc7c7f)</a>
+  </div>
+
+  <video id="vid"></video>
+  <canvas id="c"></canvas>
+
+  <script>
+    var vid = document.getElementById('vid');
+    var c = document.getElementById('c');
+    var ctx = c.getContext('2d');
+    var arr = [];
+    var cur = [];
+    var draw = false;
+    var sx = null;
+    var sy = null;
+
+    // Space dabane se screen saaf ho jayegi
+    window.onkeydown = function(e) {
+      if (e.code == 'Space') {
+          arr = [];
+          cur = [];
+      }
+    }
+
+    // Do points ke darmiyan distance nikalne ka function
+    function getDistance(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function run(res) {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+      
+      // Video drawing
+      ctx.save();
+      ctx.translate(c.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(res.image, 0, 0, c.width, c.height);
+      ctx.restore();
+
+      // Dark overlay
+      ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      // Line style
+      ctx.shadowColor = '#F5D061';
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#F5D061';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Puraani lines draw karna
+      for (var i = 0; i < arr.length; i++) {
+        ctx.beginPath();
+        for (var j = 0; j < arr[i].length; j++) {
+          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
+          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+        }
+        ctx.stroke();
+      }
+
+      if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+        var lm = res.multiHandLandmarks[0];
+        
+        // Index finger (8) aur Thumb (4) points
+        var thumb = lm[4];
+        var index = lm[8];
+
+        // Distance check (0.05 ek acha threshold hai)
+        var distance = getDistance(thumb, index);
+        var isPinching = distance < 0.05; 
+
+        var rx = index.x * c.width;
+        var ry = index.y * c.height;
+
+        // Smoothing (Jitters kam karne ke liye)
+        if (sx == null) {
+          sx = rx; sy = ry;
+        } else {
+          sx += (rx - sx) * 0.45;
+          sy += (ry - sy) * 0.45;
+        }
+
+        // Pointer dikhana
+        ctx.beginPath();
+        ctx.arc(sx, sy, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = isPinching ? '#FFFFFF' : 'rgba(245, 208, 97, 0.4)';
+        ctx.fill();
+
+        // Drawing logic
+        if (isPinching) {
+          if (!draw) {
+            draw = true;
+            cur = [];
+            arr.push(cur);
+          }
+          cur.push({x: sx, y: sy});
+        } else {
+          draw = false;
+        }
+      } else {
+        draw = false;
+        sx = null;
+      }
+    }
+
+    var h = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    
+    h.setOptions({ 
+      maxNumHands: 1, 
+      modelComplexity: 1, 
+      minDetectionConfidence: 0.7, 
+      minTrackingConfidence: 0.7 
+    });
+    
+    h.onResults(run);
+
+    var cam = new Camera(vid, {
+      onFrame: async () => { await h.send({image: vid}); },
+      width: 1280, height: 720
+    });
+    
+    cam.start();
+  </script>
+</body>
+</html>

@@ -1,128 +1,381 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>ramadan pen</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  <style>
-    body { margin: 0; background: #050301; overflow: hidden; }
-    video { display: none; }
-    canvas { width: 100%; height: 100%; transform: scaleX(-1); position: absolute; z-index: 1; }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Effect & Tracking — Ramadan Glow</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #050301;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #fff;
+    }
+    video { display: none; }
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      transform: scaleX(-1);
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Top Controls UI */
+    #ui-layer {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      background: rgba(18, 12, 5, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 8px 16px;
+      border-radius: 40px;
+      border: 1px solid rgba(245, 208, 97, 0.35);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .btn {
+      background: rgba(40, 30, 20, 0.7);
+      color: #F5D061;
+      border: 1.5px solid #F5D061;
+      padding: 10px 22px;
+      border-radius: 25px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: rgba(245, 208, 97, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn.active {
+      background: #F5D061;
+      color: #050301;
+      box-shadow: 0 0 18px rgba(245, 208, 97, 0.8);
+    }
+
+    .btn-clear {
+      background: #e74c3c;
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 25px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-clear:hover { background: #c0392b; }
+
+    /* Info Badge */
+    #info-box {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(15, 10, 5, 0.8);
+      backdrop-filter: blur(10px);
+      padding: 12px 18px;
+      border-radius: 14px;
+      font-size: 13px;
+      color: #d1c7b7;
+      border: 1px solid rgba(245, 208, 97, 0.25);
+      max-width: 280px;
+      line-height: 1.5;
+    }
+    #info-box b { color: #F5D061; }
+
+    /* Status Badge */
+    #status-badge {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      background: rgba(15, 10, 5, 0.8);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #ffaa00;
+      animation: pulse 1.5s infinite;
+    }
+    .dot.connected { background: #00e676; animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+
+    #nav-links {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+    }
+    #nav-links a {
+      color: #F5D061;
+      text-decoration: none;
+      background: rgba(20, 15, 10, 0.8);
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(245, 208, 97, 0.3);
+      backdrop-filter: blur(8px);
+      transition: 0.2s;
+    }
+    #nav-links a:hover, #nav-links a.active {
+      background: #F5D061;
+      color: #050301;
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.6);
+    }
+  </style>
 </head>
 <body>
-  <video id="vid"></video>
-  <canvas id="c"></canvas>
-  <script>
-    var vid = document.getElementById('vid');
-    var c = document.getElementById('c');
-    var ctx = c.getContext('2d');
-    var arr = [];
-    var cur = [];
-    var shift = false;
-    var draw = false;
-    var sx = null;
-    var sy = null;
 
-    window.onkeydown = function(e) {
-      if (e.key == 'Shift') shift = true;
-      if (e.code == 'Space') arr = [];
-    }
-    
-    window.onkeyup = function(e) {
-      if (e.key == 'Shift') shift = false;
-    }
+  <div id="status-badge">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Starting Camera...</span>
+  </div>
 
-    function run(res) {
-      c.width = window.innerWidth;
-      c.height = window.innerHeight;
-      ctx.drawImage(res.image, 0, 0, c.width, c.height);
-      ctx.fillStyle = 'rgba(10, 6, 2, 0.85)';
-      ctx.fillRect(0, 0, c.width, c.height);
+  <div id="info-box">
+    ✨ <b>Face Controls:</b><br>
+    • <b>Golden Mesh:</b> Face tracking active<br>
+    • <b>Nose Pointer:</b> Head move karein to draw hoga<br>
+    • <b>Mouth Gesture:</b> Mouth open karein draw karne ke liye!<br>
+    • <b>Clear:</b> Space key ya Clear button
+  </div>
 
-      ctx.shadowColor = '#F5D061';
-      ctx.shadowBlur = 15;
-      ctx.strokeStyle = '#F5D061';
-      ctx.lineWidth = 6;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+  <div id="ui-layer">
+    <div class="btn-group">
+      <button class="btn active" id="toggleMeshBtn" onclick="toggleMesh()">✨ FACE MESH: ON</button>
+      <button class="btn" id="toggleDrawBtn" onclick="toggleDrawMode()">✍️ DRAW MODE: OFF</button>
+      <button class="btn-clear" onclick="clearCanvas()">🗑️ CLEAR</button>
+    </div>
+  </div>
 
-      for (var i = 0; i < arr.length; i++) {
-        ctx.beginPath();
-        for (var j = 0; j < arr[i].length; j++) {
-          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
-          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
-        }
-        ctx.stroke();
-      }
+  <div id="nav-links">
+    <a href="index.html" class="active">👤 Face Mode (Active)</a>
+    <a href="hand.html">🖐️ Hand Mode (Dual Control)</a>
+    <a href="shift-original.html">⌨️ Hand Original (Shift)</a>
+  </div>
 
-      if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
-        var lm = res.multiHandLandmarks[0];
-        drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: 'rgba(245, 208, 97, 0.3)', lineWidth: 2});
-        drawLandmarks(ctx, lm, {color: '#FFFFFF', lineWidth: 1, radius: 2});
+  <video id="vid" playsinline></video>
+  <canvas id="c"></canvas>
 
-        var ind = lm[8];
-        var rx = ind.x * c.width;
-        var ry = ind.y * c.height;
+  <script>
+    var vid = document.getElementById('vid');
+    var c = document.getElementById('c');
+    var ctx = c.getContext('2d');
+    var toggleDrawBtn = document.getElementById('toggleDrawBtn');
+    var toggleMeshBtn = document.getElementById('toggleMeshBtn');
+    var statusText = document.getElementById('statusText');
+    var statusDot = document.getElementById('statusDot');
 
-        if (sx == null) {
-          sx = rx; 
-          sy = ry;
-        } else {
-          sx += (rx - sx) * 0.45;
-          sy += (ry - sy) * 0.45;
-        }
+    var arr = [];
+    var cur = [];
+    var isDrawingMode = false;
+    var showMesh = true;
+    var isDrawingNow = false;
+    var sx = null, sy = null;
 
-        ctx.beginPath();
-        ctx.arc(sx, sy, 6, 0, 2 * Math.PI);
-        if (shift) { 
-          ctx.fillStyle = '#FFFFFF'; 
-        } else { 
-          ctx.fillStyle = 'rgba(245, 208, 97, 0.4)'; 
-        }
-        ctx.fill();
+    function clearCanvas() {
+      arr = [];
+      cur = [];
+      isDrawingNow = false;
+    }
 
-        if (shift) {
-          if (!draw) {
-            draw = true;
-            cur = [];
-            arr.push(cur);
-          }
-          cur.push({x: sx, y: sy});
-        } else {
-          draw = false;
-        }
-      } else {
-        draw = false;
-        sx = null;
-      }
-    }
+    function toggleDrawMode() {
+      isDrawingMode = !isDrawingMode;
+      if (isDrawingMode) {
+        toggleDrawBtn.innerText = "✍️ DRAW MODE: ON";
+        toggleDrawBtn.classList.add("active");
+      } else {
+        toggleDrawBtn.innerText = "✍️ DRAW MODE: OFF";
+        toggleDrawBtn.classList.remove("active");
+        isDrawingNow = false;
+      }
+    }
 
-    var h = new Hands({
-      locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      }
-    });
-    
-    h.setOptions({ 
-      maxNumHands: 1, 
-      modelComplexity: 1, 
-      minDetectionConfidence: 0.5, 
-      minTrackingConfidence: 0.5 
-    });
-    
-    h.onResults(run);
+    function toggleMesh() {
+      showMesh = !showMesh;
+      if (showMesh) {
+        toggleMeshBtn.innerText = "✨ FACE MESH: ON";
+        toggleMeshBtn.classList.add("active");
+      } else {
+        toggleMeshBtn.innerText = "✨ FACE MESH: OFF";
+        toggleMeshBtn.classList.remove("active");
+      }
+    }
 
-    var cam = new Camera(vid, {
-      onFrame: async () => { await h.send({image: vid}); },
-      width: 1280, 
-      height: 720
-    });
-    
-    cam.start();
-  </script>
+    function run(res) {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+
+      // Draw mirrored webcam background
+      ctx.drawImage(res.image, 0, 0, c.width, c.height);
+
+      // Dark golden cinematic overlay
+      ctx.fillStyle = 'rgba(10, 6, 2, 0.82)';
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      // Stroke pen style
+      ctx.shadowColor = '#F5D061';
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#F5D061';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Draw accumulated drawn lines
+      for (var i = 0; i < arr.length; i++) {
+        ctx.beginPath();
+        for (var j = 0; j < arr[i].length; j++) {
+          if (j == 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
+          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+        }
+        ctx.stroke();
+      }
+
+      if (res.multiFaceLandmarks && res.multiFaceLandmarks.length > 0) {
+        statusText.textContent = "Face Detected";
+        statusDot.classList.add("connected");
+
+        var lm = res.multiFaceLandmarks[0];
+
+        // 1. Golden Face Mesh Drawing
+        if (showMesh) {
+          // Tessellation mesh (delicate golden web)
+          drawConnectors(ctx, lm, FACEMESH_TESSELATION, {color: 'rgba(245, 208, 97, 0.22)', lineWidth: 1});
+
+          // Eye Contours
+          drawConnectors(ctx, lm, FACEMESH_RIGHT_EYE, {color: '#F5D061', lineWidth: 2});
+          drawConnectors(ctx, lm, FACEMESH_LEFT_EYE, {color: '#F5D061', lineWidth: 2});
+          drawConnectors(ctx, lm, FACEMESH_RIGHT_EYEBROW, {color: 'rgba(245, 208, 97, 0.7)', lineWidth: 2});
+          drawConnectors(ctx, lm, FACEMESH_LEFT_EYEBROW, {color: 'rgba(245, 208, 97, 0.7)', lineWidth: 2});
+
+          // Face Oval
+          drawConnectors(ctx, lm, FACEMESH_FACE_OVAL, {color: 'rgba(245, 208, 97, 0.65)', lineWidth: 2.5});
+
+          // Lips (Golden pink accent)
+          drawConnectors(ctx, lm, FACEMESH_LIPS, {color: 'rgba(255, 120, 140, 0.85)', lineWidth: 2});
+        }
+
+        // 2. Motion Tracking on Nose Tip (Landmark 4)
+        var noseTip = lm[4] || lm[1];
+        var rx = noseTip.x * c.width;
+        var ry = noseTip.y * c.height;
+
+        // Smooth nose coordinates
+        if (sx == null) { sx = rx; sy = ry; }
+        else { sx += (rx - sx) * 0.45; sy += (ry - sy) * 0.45; }
+
+        // Mouth open detection for gesture-based drawing (landmarks 13 & 14)
+        var upperLip = lm[13];
+        var lowerLip = lm[14];
+        var mouthDist = Math.abs(lowerLip.y - upperLip.y) * c.height;
+        var isMouthOpen = mouthDist > 16;
+
+        // Active drawing condition
+        var shouldDraw = isDrawingMode || isMouthOpen;
+
+        // Glowing Nose Pointer Dot
+        ctx.beginPath();
+        ctx.arc(sx, sy, 7, 0, 2 * Math.PI);
+        if (shouldDraw) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.shadowColor = '#FFFFFF';
+          ctx.shadowBlur = 22;
+        } else {
+          ctx.fillStyle = 'rgba(245, 208, 97, 0.5)';
+          ctx.shadowColor = '#F5D061';
+          ctx.shadowBlur = 10;
+        }
+        ctx.fill();
+
+        // Line drawing
+        if (shouldDraw) {
+          if (!isDrawingNow) {
+            isDrawingNow = true;
+            cur = [];
+            arr.push(cur);
+          }
+          cur.push({x: sx, y: sy});
+        } else {
+          isDrawingNow = false;
+        }
+      } else {
+        statusText.textContent = "Show Face to Camera";
+        statusDot.classList.remove("connected");
+        isDrawingNow = false;
+        sx = null;
+      }
+    }
+
+    var faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(run);
+
+    var cam = new Camera(vid, {
+      onFrame: async () => { await faceMesh.send({image: vid}); },
+      width: 1280,
+      height: 720
+    });
+
+    cam.start().then(() => {
+      statusText.textContent = "Camera Ready — Show Face";
+    }).catch(err => {
+      console.error(err);
+      statusText.textContent = "Camera Blocked — Check Permissions";
+    });
+
+    // Space key to clear canvas
+    window.onkeydown = function(e) {
+      if (e.code === 'Space') clearCanvas();
+    };
+  </script>
 </body>
 </html>
-
-mugha ismy aik ya option dena hai kis ma click kren shift na daba na pare
