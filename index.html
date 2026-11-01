@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face Effect</title>
+  <title>Merry Christmas — Face Effect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Great+Vibes&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #000;
+      background: #050301;
       overflow: hidden;
       cursor: crosshair;
+      user-select: none;
     }
     video { display: none; }
     canvas {
@@ -22,10 +26,84 @@
       position: absolute;
       top: 0;
       left: 0;
+      z-index: 1;
+    }
+
+    /* Elegant Glowing Festive Header */
+    #greeting-container {
+      position: absolute;
+      top: 25px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .sub-title {
+      font-family: 'Great Vibes', cursive;
+      font-size: 26px;
+      color: #ffdd80;
+      letter-spacing: 2px;
+      text-shadow: 0 0 12px rgba(245, 208, 97, 0.7);
+      margin-bottom: -6px;
+    }
+
+    .main-title {
+      font-family: 'Cinzel', serif;
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: #FFF2C6;
+      text-transform: uppercase;
+      text-shadow: 
+        0 0 15px rgba(245, 208, 97, 0.9),
+        0 0 35px rgba(245, 208, 97, 0.6),
+        0 0 60px rgba(255, 215, 0, 0.4);
+      animation: pulseGlow 2.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+      0% {
+        text-shadow: 
+          0 0 10px rgba(245, 208, 97, 0.8),
+          0 0 25px rgba(245, 208, 97, 0.5),
+          0 0 40px rgba(255, 215, 0, 0.3);
+      }
+      100% {
+        text-shadow: 
+          0 0 20px rgba(255, 235, 150, 1),
+          0 0 45px rgba(245, 208, 97, 0.8),
+          0 0 80px rgba(255, 215, 0, 0.6);
+      }
+    }
+
+    /* Minimalist status hint at bottom */
+    #hint {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      color: rgba(245, 208, 97, 0.45);
+      letter-spacing: 1px;
+      pointer-events: none;
+      transition: color 0.3s;
     }
   </style>
 </head>
 <body>
+  <div id="greeting-container">
+    <div class="sub-title">Happy & Blessed</div>
+    <div class="main-title">✨ Merry Christmas ✨</div>
+  </div>
+
+  <div id="hint">Click or hold Shift to Draw | Space to Clear</div>
+
   <video id="vid" playsinline></video>
   <canvas id="c"></canvas>
 
@@ -33,37 +111,57 @@
     var vid = document.getElementById('vid');
     var c = document.getElementById('c');
     var ctx = c.getContext('2d');
+    var hint = document.getElementById('hint');
 
     var arr = [];
     var cur = [];
-    var isDrawingMode = true; // Auto draw enabled by default
+    var isDrawingMode = false; // OFF by default so face does NOT auto-draw!
     var isDrawingNow = false;
+    var shiftPressed = false;
     var sx = null;
     var sy = null;
 
-    // Space to clear canvas
+    // Gentle Festive Snow / Sparkles
+    var sparkles = [];
+    for (var p = 0; p < 45; p++) {
+      sparkles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        r: Math.random() * 2 + 0.8,
+        speed: Math.random() * 1.2 + 0.4,
+        drift: (Math.random() - 0.5) * 0.6,
+        alpha: Math.random() * 0.6 + 0.2
+      });
+    }
+
+    // Controls: Click anywhere to toggle draw
+    window.onclick = function() {
+      isDrawingMode = !isDrawingMode;
+      if (!isDrawingMode) {
+        isDrawingNow = false;
+        hint.textContent = "Click or hold Shift to Draw | Space to Clear";
+        hint.style.color = "rgba(245, 208, 97, 0.45)";
+      } else {
+        hint.textContent = "✍️ Draw Mode: ACTIVE (Click to stop)";
+        hint.style.color = "#FFD700";
+      }
+    };
+
     window.onkeydown = function(e) {
+      if (e.key === 'Shift') {
+        shiftPressed = true;
+      }
       if (e.code === 'Space') {
         arr = [];
         cur = [];
         isDrawingNow = false;
       }
-      if (e.key === 'Shift') {
-        isDrawingMode = true;
-      }
     };
 
     window.onkeyup = function(e) {
       if (e.key === 'Shift') {
-        // keep drawing mode state unless toggled
-      }
-    };
-
-    // Click anywhere to toggle drawing ON / OFF
-    window.onclick = function() {
-      isDrawingMode = !isDrawingMode;
-      if (!isDrawingMode) {
-        isDrawingNow = false;
+        shiftPressed = false;
+        if (!isDrawingMode) isDrawingNow = false;
       }
     };
 
@@ -71,53 +169,70 @@
       c.width = window.innerWidth;
       c.height = window.innerHeight;
 
-      // 1. Draw crisp camera feed
+      // 1. Draw raw video feed
       ctx.drawImage(res.image, 0, 0, c.width, c.height);
 
-      // 2. Light dark vignette so face remains bright & clear (not pitch black)
-      ctx.fillStyle = 'rgba(10, 6, 2, 0.4)';
+      // 2. Deep Dark Cinematic Filter
+      ctx.fillStyle = 'rgba(8, 5, 2, 0.85)';
       ctx.fillRect(0, 0, c.width, c.height);
 
-      // 3. Draw accumulated lines with golden glow
-      ctx.shadowColor = '#FFD700';
-      ctx.shadowBlur = 18;
-      ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 5;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      // 3. Gentle Falling Festive Sparkles
+      ctx.fillStyle = '#FFF8DB';
+      for (var s = 0; s < sparkles.length; s++) {
+        var sp = sparkles[s];
+        sp.y += sp.speed;
+        sp.x += sp.drift;
+        if (sp.y > c.height) { sp.y = -5; sp.x = Math.random() * c.width; }
+        if (sp.x > c.width) sp.x = 0;
+        if (sp.x < 0) sp.x = c.width;
 
-      for (var i = 0; i < arr.length; i++) {
+        ctx.globalAlpha = sp.alpha;
         ctx.beginPath();
-        for (var j = 0; j < arr[i].length; j++) {
-          if (j === 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
-          else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+        ctx.arc(sp.x, sp.y, sp.r, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1.0;
+
+      // 4. Draw Accumulated Drawing Lines (if user drew anything)
+      if (arr.length > 0) {
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (var i = 0; i < arr.length; i++) {
+          ctx.beginPath();
+          for (var j = 0; j < arr[i].length; j++) {
+            if (j === 0) ctx.moveTo(arr[i][j].x, arr[i][j].y);
+            else ctx.lineTo(arr[i][j].x, arr[i][j].y);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
+        ctx.shadowBlur = 0;
       }
 
-      // Reset shadow blur for fast mesh rendering
-      ctx.shadowBlur = 0;
-
+      // 5. Face Tracking & Golden Filter
       if (res.multiFaceLandmarks && res.multiFaceLandmarks.length > 0) {
         var lm = res.multiFaceLandmarks[0];
 
-        // Fast, high-FPS Golden Face Contours (No lag)
+        // Crisp Golden Contours
         drawConnectors(ctx, lm, FACEMESH_FACE_OVAL, {color: 'rgba(245, 208, 97, 0.85)', lineWidth: 2});
         drawConnectors(ctx, lm, FACEMESH_RIGHT_EYE, {color: '#FFD700', lineWidth: 2});
         drawConnectors(ctx, lm, FACEMESH_LEFT_EYE, {color: '#FFD700', lineWidth: 2});
         drawConnectors(ctx, lm, FACEMESH_RIGHT_EYEBROW, {color: 'rgba(245, 208, 97, 0.75)', lineWidth: 2});
         drawConnectors(ctx, lm, FACEMESH_LEFT_EYEBROW, {color: 'rgba(245, 208, 97, 0.75)', lineWidth: 2});
-        drawConnectors(ctx, lm, FACEMESH_LIPS, {color: 'rgba(255, 140, 160, 0.85)', lineWidth: 2});
+        drawConnectors(ctx, lm, FACEMESH_LIPS, {color: 'rgba(255, 120, 140, 0.85)', lineWidth: 2});
 
-        // Delicate inner mesh lines for elegant cyber/Ramadan look
-        drawConnectors(ctx, lm, FACEMESH_TESSELATION, {color: 'rgba(245, 208, 97, 0.15)', lineWidth: 0.8});
+        // Delicate Golden Inner Mesh
+        drawConnectors(ctx, lm, FACEMESH_TESSELATION, {color: 'rgba(245, 208, 97, 0.16)', lineWidth: 0.8});
 
-        // Nose pointer (Landmark 4)
+        // Nose tip position (Landmark 4)
         var nose = lm[4] || lm[1];
         var rx = nose.x * c.width;
         var ry = nose.y * c.height;
 
-        // Smooth nose movement
         if (sx === null) {
           sx = rx;
           sy = ry;
@@ -126,17 +241,19 @@
           sy += (ry - sy) * 0.5;
         }
 
+        var shouldDraw = isDrawingMode || shiftPressed;
+
         // Glowing Pointer at Nose Tip
-        ctx.shadowColor = isDrawingMode ? '#FFFFFF' : '#FFD700';
-        ctx.shadowBlur = 15;
+        ctx.shadowColor = shouldDraw ? '#FFFFFF' : '#FFD700';
+        ctx.shadowBlur = shouldDraw ? 20 : 12;
         ctx.beginPath();
         ctx.arc(sx, sy, 6, 0, 2 * Math.PI);
-        ctx.fillStyle = isDrawingMode ? '#FFFFFF' : 'rgba(245, 208, 97, 0.6)';
+        ctx.fillStyle = shouldDraw ? '#FFFFFF' : 'rgba(245, 208, 97, 0.5)';
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Draw when active
-        if (isDrawingMode) {
+        // Only record drawing points when draw mode is explicitly active!
+        if (shouldDraw) {
           if (!isDrawingNow) {
             isDrawingNow = true;
             cur = [];
@@ -158,7 +275,7 @@
 
     faceMesh.setOptions({
       maxNumFaces: 1,
-      refineLandmarks: false, // Turned off for maximum FPS
+      refineLandmarks: false,
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
